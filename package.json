@@ -1,7 +1,15 @@
 {
   "name": "ssh2-scp",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Remote file system operations over SSH2 session without SFTP",
+  "scripts": {
+    "build": "npm run build:esm && npm run build:cjs",
+    "build:esm": "vite build --config build/vite.config.ts --outDir dist/esm",
+    "build:cjs": "vite build --config build/vite.config.cjs.ts --outDir dist/cjs",
+    "test": "node test/ssh2-fs.test.mjs && node test/transfer.test.mjs",
+    "lint": "echo \"Lint not configured\" && exit 0",
+    "typecheck": "tsc --noEmit"
+  },
   "homepage": "https://github.com/electerm/ssh2-scp#readme",
   "bugs": {
     "url": "https://github.com/electerm/ssh2-scp/issues"
@@ -19,12 +27,12 @@
   "exports": {
     ".": {
       "import": "./dist/esm/ssh-fs.js",
-      "require": "./dist/cjs/ssh-fs.js",
+      "require": "./dist/cjs/ssh-fs.cjs",
       "types": "./dist/esm/ssh-fs.d.ts"
     },
     "./transfer": {
       "import": "./dist/esm/transfer.js",
-      "require": "./dist/cjs/transfer.js",
+      "require": "./dist/cjs/transfer.cjs",
       "types": "./dist/esm/transfer.d.ts"
     }
   },
@@ -34,14 +42,6 @@
     "README-CN.md",
     "LICENSE"
   ],
-  "scripts": {
-    "build": "vite build --config build/vite.config.ts",
-    "build:esm": "vite build --config build/vite.config.ts --outDir dist/esm",
-    "build:cjs": "vite build --config build/vite.config.cjs.ts --outDir dist/cjs",
-    "test": "node test/ssh2-fs.test.mjs && node test/transfer.test.mjs",
-    "lint": "echo \"Lint not configured\" && exit 0",
-    "typecheck": "tsc --noEmit"
-  },
   "devDependencies": {
     "@types/node": "^20.10.0",
     "@types/ssh2": "^1.11.0",
