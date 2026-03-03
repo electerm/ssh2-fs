@@ -67,7 +67,7 @@ describe('SSH File System', { concurrency: false }, () => {
     const p = `${TEST_BASE_DIR}/b.txt`
     await sftp.writeFile(p, 'hi')
     const r = await sftp.readFile(p)
-    assert.strictEqual(r.toString(), 'hi')
+    assert.strictEqual(r, 'hi')
   }, TEST_TIMEOUT)
 
   test('writeFile and readFile medium file (100KB)', async () => {
@@ -75,7 +75,7 @@ describe('SSH File System', { concurrency: false }, () => {
     const content = 'B'.repeat(100 * 1024) // 100KB
     await sftp.writeFile(p, content)
     const r = await sftp.readFile(p)
-    assert.strictEqual(r.toString(), content)
+    assert.strictEqual(r, content)
   }, TEST_TIMEOUT)
 
   test('mkdir creates directory', async () => {

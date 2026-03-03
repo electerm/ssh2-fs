@@ -295,34 +295,34 @@ export class SshFs {
     return this.rmCmd(remotePath)
   }
 
-  async readFile(remotePath: string, options?: { chunkSize?: number }): Promise<Buffer> {
+  async readFile(remotePath: string, options?: { chunkSize?: number }): Promise<string> {
     const chunkSize = options?.chunkSize ?? 64 * 1024
     const fileSizeOutput = await this.runCmd(`stat -c %s "${remotePath}"`)
     const fileSize = parseInt(fileSizeOutput.trim(), 10)
     
     if (fileSize <= chunkSize) {
       const output = await this.runCmd(`cat "${remotePath}"`)
-      return Buffer.from(output, 'binary')
+      return output
     }
     
-    const chunks: Buffer[] = []
+    const chunks: string[] = []
     for (let offset = 0; offset < fileSize; offset += chunkSize) {
       const cmd = `dd if="${remotePath}" bs=1K skip=${Math.floor(offset / 1024)} count=${Math.ceil(chunkSize / 1024)} 2>/dev/null`
       const chunkOutput = await this.runCmd(cmd)
       if (chunkOutput) {
-        chunks.push(Buffer.from(chunkOutput, 'binary'))
+        chunks.push(chunkOutput)
       }
     }
     
-    return Buffer.concat(chunks)
+    return chunks.join('')
   }
 
-  async writeFile(remotePath: string, str: Buffer | string, mode?: number, _options?: { chunkSize?: number }): Promise<void> {
-    const data = typeof str === 'string' ? Buffer.from(str) : str
+  async writeFile(remotePath: string, str: string, mode?: number, _options?: { chunkSize?: number }): Promise<void> {
+    const data = Buffer.from(str)
     const sizeThreshold = 64 * 1024
     
     if (data.length <= sizeThreshold) {
-      const escapedContent = data.toString('binary').replace(/'/g, "'\\''")
+      const escapedContent = str.replace(/'/g, "'\\''")
       const cmd = `printf '%s' '${escapedContent}' > "${remotePath}"`
       await this.runCmd(cmd)
     } else {
