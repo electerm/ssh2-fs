@@ -70,6 +70,14 @@ describe('SSH File System', { concurrency: false }, () => {
     assert.strictEqual(r.toString(), 'hi')
   }, TEST_TIMEOUT)
 
+  test('writeFile and readFile medium file (100KB)', async () => {
+    const p = `${TEST_BASE_DIR}/medium-${TIMESTAMP}.txt`
+    const content = 'B'.repeat(100 * 1024) // 100KB
+    await sftp.writeFile(p, content)
+    const r = await sftp.readFile(p)
+    assert.strictEqual(r.toString(), content)
+  }, TEST_TIMEOUT)
+
   test('mkdir creates directory', async () => {
     const p = `${TEST_BASE_DIR}/sub`
     await sftp.mkdir(p)

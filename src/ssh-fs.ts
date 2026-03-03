@@ -356,19 +356,56 @@ export function createSshFs(session: Client, options?: SshFsOptions): SshFs {
       return rmCmd(remotePath)
     },
 
-    async readFile(remotePath: string): Promise<Buffer> {
-      const output = await this.runExec(`cat "${remotePath}"`)
-      return Buffer.from(output, 'binary')
+    async readFile(remotePath: string, options?: { chunkSize?: number }): Promise<Buffer> {
+      const chunkSize = options?.chunkSize ?? 64 * 1024
+      const fileSizeOutput = await runCmd(`stat -c %s "${remotePath}"`)
+      const fileSize = parseInt(fileSizeOutput.trim(), 10)
+      
+      if (fileSize <= chunkSize) {
+        const output = await runCmd(`cat "${remotePath}"`)
+        return Buffer.from(output, 'binary')
+      }
+      
+      const chunks: Buffer[] = []
+      for (let offset = 0; offset < fileSize; offset += chunkSize) {
+        const cmd = `dd if="${remotePath}" bs=1K skip=${Math.floor(offset / 1024)} count=${Math.ceil(chunkSize / 1024)} 2>/dev/null`
+        const chunkOutput = await runCmd(cmd)
+        if (chunkOutput) {
+          chunks.push(Buffer.from(chunkOutput, 'binary'))
+        }
+      }
+      
+      return Buffer.concat(chunks)
     },
 
-    writeFile(remotePath: string, str: Buffer | string, mode?: number) {
-      const escapedContent = typeof str === 'string'
-        ? str.replace(/'/g, "'\\''")
-        : str.toString('binary').replace(/'/g, "'\\''")
-      const cmd = mode
-        ? `printf '%s' '${escapedContent}' | tee "${remotePath}" > /dev/null && chmod ${mode.toString(8)} "${remotePath}"`
-        : `printf '%s' '${escapedContent}' > "${remotePath}"`
-      return runCmd(cmd)
+    async writeFile(remotePath: string, str: Buffer | string, mode?: number, _options?: { chunkSize?: number }): Promise<void> {
+      const data = typeof str === 'string' ? Buffer.from(str) : str
+      const sizeThreshold = 64 * 1024 // 64KB
+      
+      if (data.length <= sizeThreshold) {
+        const escapedContent = data.toString('binary').replace(/'/g, "'\\''")
+        const cmd = `printf '%s' '${escapedContent}' > "${remotePath}"`
+        await runCmd(cmd)
+      } else {
+        const tempBase = `/tmp/ssh-fs-${Date.now()}`
+        await runCmd(`mkdir -p "${tempBase}"`)
+        try {
+          const chunkSize = 64 * 1024
+          for (let i = 0; i < data.length; i += chunkSize) {
+            const chunk = data.slice(i, i + chunkSize)
+            const chunkFile = `${tempBase}/c${Math.floor(i / chunkSize)}`
+            const escapedChunk = chunk.toString('binary').replace(/'/g, "'\\''")
+            await runCmd(`printf '%s' '${escapedChunk}' > "${chunkFile}"`)
+          }
+          await runCmd(`cat ${tempBase}/c* > "${remotePath}"`)
+        } finally {
+          await runCmd(`rm -rf "${tempBase}"`)
+        }
+      }
+      
+      if (mode) {
+        await runCmd(`chmod ${mode.toString(8)} "${remotePath}"`)
+      }
     }
   }
 }
