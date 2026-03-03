@@ -6,7 +6,7 @@ export default defineConfig({
     target: 'node22',
     lib: {
       entry: {
-        index: resolve(__dirname, '../src/index.ts'),
+        'ssh-fs': resolve(__dirname, '../src/ssh-fs.ts'),
         transfer: resolve(__dirname, '../src/transfer.ts')
       },
       name: 'ssh2Fs',

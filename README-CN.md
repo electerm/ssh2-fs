@@ -21,11 +21,11 @@ npm install ssh2-fs
 
 ```javascript
 import { Client } from 'ssh2'
-import { SSH2FS } from 'ssh2-fs'
+import { createSshFs } from 'ssh2-fs'
 
 const client = new Client()
 client.on('ready', () => {
-  const fs = new SSH2FS(client)
+  const fs = createSshFs(client)
   
   // 列出目录
   const files = await fs.list('/path/to/dir')
@@ -49,7 +49,7 @@ client.on('ready', () => {
 ### 构造函数
 
 ```javascript
-new SSH2FS(client)
+createSshFs(client)
 ```
 
 - `client` - 已认证的 ssh2 Client 实例
@@ -93,6 +93,33 @@ new SSH2FS(client)
 
 - `getHomeDir()` - 获取主目录
 - `runExec(command)` - 执行原始 shell 命令
+
+## 文件传输
+
+```javascript
+import { Transfer } from 'ssh2-fs/transfer'
+
+const transfer = new Transfer(fs, {
+  type: 'download', // 或 'upload'
+  remotePath: '/远程/路径',
+  localPath: '/本地/路径',
+  chunkSize: 32768,
+  onProgress: (transferred, total) => {
+    console.log(`进度: ${transferred}/${total}`)
+  }
+})
+
+await transfer.startTransfer()
+```
+
+### 传输选项
+
+- `type` - 传输类型：`'download'`（下载）或 `'upload'`（上传）
+- `remotePath` - 远程文件/文件夹路径
+- `localPath` - 本地文件/文件夹路径
+- `chunkSize` - 传输块大小（默认：32768）
+- `onProgress` - 进度回调函数 `(transferred, total) => void`
+- `onData` - 数据回调函数 `(count) => void`
 
 ## 许可证
 

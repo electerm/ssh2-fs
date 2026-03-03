@@ -1,44 +1,16 @@
 import type { Client, ExecOptions } from 'ssh2'
+import type {
+  SshFsOptions,
+  FileInfo,
+  Stats
+} from './type.js'
 
-export interface SshFsOptions {
-}
-
-export interface FileInfo {
-  type: string
-  name: string
-  size: number
-  modifyTime: number
-  accessTime: number
-  mode: number
-  rights: {
-    user: string
-    group: string
-    other: string
-  }
-  owner: number
-  group: number
-}
-
-export interface Stats {
-  isDirectory: () => boolean
-  isFile: () => boolean
-  isBlockDevice: () => boolean
-  isCharacterDevice: () => boolean
-  isSymbolicLink: () => boolean
-  isFIFO: () => boolean
-  isSocket: () => boolean
-  size: number
-  mode: number
-  uid: number
-  gid: number
-  atime: number
-  mtime: number
-}
+export type { SshFsOptions, FileInfo, Stats }
 
 export class SshFs {
   private session: Client
 
-  constructor(session: Client, options?: SshFsOptions) {
+  constructor(session: Client, _options?: SshFsOptions) {
     this.session = session
   }
 

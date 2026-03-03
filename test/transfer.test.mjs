@@ -1,4 +1,4 @@
-import { createSshFs } from '../dist/esm/index.js'
+import { createSshFs } from '../dist/esm/ssh-fs.js'
 import { Transfer } from '../dist/esm/transfer.js'
 import { Client } from 'ssh2'
 import crypto from 'crypto'

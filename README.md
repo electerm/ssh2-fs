@@ -21,11 +21,11 @@ npm install ssh2-fs
 
 ```javascript
 import { Client } from 'ssh2'
-import { SSH2FS } from 'ssh2-fs'
+import { createSshFs } from 'ssh2-fs'
 
 const client = new Client()
 client.on('ready', () => {
-  const fs = new SSH2FS(client)
+  const fs = createSshFs(client)
   
   // List directory
   const files = await fs.list('/path/to/dir')
@@ -49,7 +49,7 @@ client.on('ready', () => {
 ### Constructor
 
 ```javascript
-new SSH2FS(client)
+createSshFs(client)
 ```
 
 - `client` - An authenticated ssh2 Client instance
@@ -93,6 +93,33 @@ new SSH2FS(client)
 
 - `getHomeDir()` - Get home directory
 - `runExec(command)` - Execute raw shell command
+
+## Transfer
+
+```javascript
+import { Transfer } from 'ssh2-fs/transfer'
+
+const transfer = new Transfer(fs, {
+  type: 'download', // or 'upload'
+  remotePath: '/remote/path',
+  localPath: '/local/path',
+  chunkSize: 32768,
+  onProgress: (transferred, total) => {
+    console.log(`Progress: ${transferred}/${total}`)
+  }
+})
+
+await transfer.startTransfer()
+```
+
+### Transfer Options
+
+- `type` - Transfer type: `'download'` or `'upload'`
+- `remotePath` - Remote file/folder path
+- `localPath` - Local file/folder path
+- `chunkSize` - Chunk size for transfer (default: 32768)
+- `onProgress` - Progress callback `(transferred, total) => void`
+- `onData` - Data callback `(count) => void`
 
 ## License
 

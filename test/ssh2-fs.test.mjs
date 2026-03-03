@@ -1,4 +1,4 @@
-import { createSshFs } from '../dist/esm/index.js'
+import { createSshFs } from '../dist/esm/ssh-fs.js'
 import { Client } from 'ssh2'
 import { test, describe, before, after } from 'node:test'
 import assert from 'node:assert'
