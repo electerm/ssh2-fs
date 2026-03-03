@@ -1,6 +1,6 @@
 # ssh2-scp
 
-Remote file system operations over SSH2 session without SFTP
+Remote file system operations/file transfer over SSH2 session without SFTP
 
 [中文](./README-CN.md)
 

@@ -1,6 +1,6 @@
 # ssh2-scp
 
-通过 SSH2 会话进行远程文件系统操作（无需 SFTP）。
+通过 SSH2 会话进行远程文件系统操作/文件传输（无需 SFTP）。
 
 [English](./README.md)
 
