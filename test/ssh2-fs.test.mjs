@@ -54,6 +54,7 @@ after(() => {
 describe('SSH File System', { concurrency: false }, () => {
   test('list directory', async () => {
     const list = await sftp.list(TEST_BASE_DIR)
+    console.log('Directory listing:', list)
     assert.ok(Array.isArray(list))
   }, TEST_TIMEOUT)
 
@@ -115,6 +116,7 @@ describe('SSH File System', { concurrency: false }, () => {
 
   test('getHomeDir', async () => {
     const r = await sftp.getHomeDir()
+    console.log('Home dir:', r)
     assert.ok(r.startsWith('/'))
   }, TEST_TIMEOUT)
 
@@ -127,6 +129,7 @@ describe('SSH File System', { concurrency: false }, () => {
 
   test('getFolderSize', async () => {
     const r = await sftp.getFolderSize(TEST_BASE_DIR)
+    console.log('Folder size:', r)
     assert.ok(r.size.length > 0)
   }, TEST_TIMEOUT)
 

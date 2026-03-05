@@ -9,9 +9,61 @@ export type { SshFsOptions, FileInfo, Stats }
 
 export class SshFs {
   private session: Client
+  private _chunkSize: number | null = null
+
+  async getChunkSize(): Promise<number> {
+    return this.detectChunkSize()
+  }
 
   constructor(session: Client, _options?: SshFsOptions) {
     this.session = session
+  }
+
+  private async detectChunkSize(): Promise<number> {
+    if (this._chunkSize !== null) {
+      return this._chunkSize
+    }
+    
+    const parseMemKb = (kb: number): number => {
+      if (kb > 256 * 1024) {
+        return 4 * 1024
+      } else if (kb > 128 * 1024) {
+        return 2 * 1024
+      } else if (kb > 64 * 1024) {
+        return 1 * 1024
+      }
+      return 512
+    }
+    
+    try {
+      const output = await this.runCmd('free -b')
+      const lines = output.trim().split('\n')
+      const memLine = lines.find(l => l.startsWith('Mem:'))
+      if (memLine) {
+        const parts = memLine.trim().split(/\s+/)
+        const totalMemKb = parseInt(parts[1], 10)
+        this._chunkSize = parseMemKb(totalMemKb)
+        return this._chunkSize
+      }
+    } catch (err) {
+      console.error('[ssh-fs] detectChunkSize: free -b failed', err)
+    }
+    
+    try {
+      const output = await this.runCmd('cat /proc/meminfo')
+      const memTotalLine = output.split('\n').find(l => l.startsWith('MemTotal:'))
+      if (memTotalLine) {
+        const kb = parseInt(memTotalLine.split(':')[1].trim(), 10)
+        this._chunkSize = parseMemKb(kb)
+        return this._chunkSize
+      }
+    } catch (err) {
+      console.error('[ssh-fs] detectChunkSize: /proc/meminfo failed', err)
+    }
+    
+    this._chunkSize = 1 * 1024
+    console.error('[ssh-fs] detectChunkSize: using default chunkSize')
+    return this._chunkSize
   }
 
   private getExecOpts(): ExecOptions {
@@ -21,6 +73,25 @@ export class SshFs {
   private getMonthIndex(month: string): number {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
     return months.indexOf(month)
+  }
+
+  private parseMode(modeStr: string): number {
+    const permMap: Record<string, number> = {
+      '---': 0, '--x': 1, '-w-': 2, '-wx': 3,
+      'r--': 4, 'r-x': 5, 'rw-': 6, 'rwx': 7
+    }
+    const perms = modeStr.slice(1, 10)
+    const owner = permMap[perms.slice(0, 3)] || 0
+    const group = permMap[perms.slice(3, 6)] || 0
+    const other = permMap[perms.slice(6, 9)] || 0
+    let fileType = 0o100000
+    if (modeStr.startsWith('d')) fileType = 0o040000
+    else if (modeStr.startsWith('l')) fileType = 0o120000
+    else if (modeStr.startsWith('c')) fileType = 0o020000
+    else if (modeStr.startsWith('b')) fileType = 0o060000
+    else if (modeStr.startsWith('p')) fileType = 0o010000
+    else if (modeStr.startsWith('s')) fileType = 0o140000
+    return fileType | (owner << 6) | (group << 3) | other
   }
 
   private runCmd(cmd: string, timeout = 30000): Promise<string> {
@@ -138,11 +209,13 @@ export class SshFs {
   }
 
   async getFolderSize(folderPath: string): Promise<{ size: string; count: number }> {
-    const output = await this.runExec(`du -sh "${folderPath}" && find "${folderPath}" -type f | wc -l`)
-    const lines = output.trim().split('\n')
-    const size = lines[0]?.split('\t')[0] || '0'
-    const count = parseInt(lines[1] || '0', 10)
-    return { size, count }
+    try {
+      const output = await this.runCmd(`du -sh "${folderPath}"`)
+      const size = output.trim().split('\t')[0] || '0'
+      return { size, count: 0 }
+    } catch {
+      return { size: '0', count: 0 }
+    }
   }
 
   private async listFiles(remotePath: string): Promise<FileInfo[]> {
@@ -212,31 +285,34 @@ export class SshFs {
 
   async stat(remotePath: string): Promise<Stats> {
     const isSymlink = await this.runCmd(`test -L "${remotePath}" && echo 1 || echo 0`).then(r => r.trim() === '1')
-    const output = await this.runCmd(`stat -c '%s %h %u %g %Y %Y %a' "${remotePath}"`)
+    const output = await this.runCmd(`ls -la "${remotePath}"`)
     const parts = output.trim().split(/\s+/)
-    if (parts.length < 7) {
+    if (parts.length < 9) {
       return {
         size: 0, mode: 0, uid: 0, gid: 0, atime: 0, mtime: 0,
         isFile: () => false, isDirectory: () => false, isSymbolicLink: () => false,
         isBlockDevice: () => false, isCharacterDevice: () => false, isFIFO: () => false, isSocket: () => false
       }
     }
-    const [size, _nlink, uid, gid, atime, mtime, modeOct] = parts
-    const mode = parseInt(modeOct, 8)
+    const size = parseInt(parts[4], 10)
+    const modeStr = parts[0]
+    const mode = this.parseMode(modeStr)
+    const uid = parseInt(parts[2], 10)
+    const gid = parseInt(parts[3], 10)
     return {
-      size: parseInt(size, 10),
+      size,
       mode,
-      uid: parseInt(uid, 10),
-      gid: parseInt(gid, 10),
-      atime: parseInt(atime, 10) * 1000,
-      mtime: parseInt(mtime, 10) * 1000,
-      isFile: () => (mode & 0o170000) === 0o100000,
-      isDirectory: () => (mode & 0o170000) === 0o040000,
+      uid,
+      gid,
+      atime: 0,
+      mtime: 0,
+      isFile: () => modeStr.startsWith('-'),
+      isDirectory: () => modeStr.startsWith('d'),
       isSymbolicLink: () => isSymlink,
-      isBlockDevice: () => (mode & 0o170000) === 0o060000,
-      isCharacterDevice: () => (mode & 0o170000) === 0o020000,
-      isFIFO: () => (mode & 0o170000) === 0o010000,
-      isSocket: () => (mode & 0o170000) === 0o140000
+      isBlockDevice: () => modeStr.startsWith('b'),
+      isCharacterDevice: () => modeStr.startsWith('c'),
+      isFIFO: () => modeStr.startsWith('p'),
+      isSocket: () => modeStr.startsWith('s')
     }
   }
 
@@ -245,37 +321,41 @@ export class SshFs {
   }
 
   realpath(remotePath: string) {
-    return this.runCmd(`realpath "${remotePath}"`).then(output => output.trim())
+    return this.runCmd(`readlink -f "${remotePath}"`).then(output => output.trim())
+      .catch(() => this.runCmd(`cd "${remotePath}" && pwd`).then(output => output.trim()))
   }
 
   async lstat(remotePath: string): Promise<Stats> {
     const output = await this.runCmd(`ls -ld "${remotePath}"`)
     const isSymlink = output.trim().startsWith('l')
-    const statOutput = await this.runCmd(`stat -c '%s %h %u %g %Y %Y %a' "${remotePath}"`)
-    const parts = statOutput.trim().split(/\s+/)
-    if (parts.length < 7) {
+    const lsOutput = await this.runCmd(`ls -la "${remotePath}"`)
+    const parts = lsOutput.trim().split(/\s+/)
+    if (parts.length < 9) {
       return {
         size: 0, mode: 0, uid: 0, gid: 0, atime: 0, mtime: 0,
         isFile: () => false, isDirectory: () => false, isSymbolicLink: () => false,
         isBlockDevice: () => false, isCharacterDevice: () => false, isFIFO: () => false, isSocket: () => false
       }
     }
-    const [size, _nlink, uid, gid, atime, mtime, modeOct] = parts
-    const mode = parseInt(modeOct, 8)
+    const size = parseInt(parts[4], 10)
+    const modeStr = parts[0]
+    const mode = this.parseMode(modeStr)
+    const uid = parseInt(parts[2], 10)
+    const gid = parseInt(parts[3], 10)
     return {
-      size: parseInt(size, 10),
+      size,
       mode,
-      uid: parseInt(uid, 10),
-      gid: parseInt(gid, 10),
-      atime: parseInt(atime, 10) * 1000,
-      mtime: parseInt(mtime, 10) * 1000,
-      isFile: () => !isSymlink && (mode & 0o170000) === 0o100000,
-      isDirectory: () => !isSymlink && (mode & 0o170000) === 0o040000,
+      uid,
+      gid,
+      atime: 0,
+      mtime: 0,
+      isFile: () => !isSymlink && modeStr.startsWith('-'),
+      isDirectory: () => !isSymlink && modeStr.startsWith('d'),
       isSymbolicLink: () => isSymlink,
-      isBlockDevice: () => (mode & 0o170000) === 0o060000,
-      isCharacterDevice: () => (mode & 0o170000) === 0o020000,
-      isFIFO: () => (mode & 0o170000) === 0o010000,
-      isSocket: () => (mode & 0o170000) === 0o140000
+      isBlockDevice: () => modeStr.startsWith('b'),
+      isCharacterDevice: () => modeStr.startsWith('c'),
+      isFIFO: () => modeStr.startsWith('p'),
+      isSocket: () => modeStr.startsWith('s')
     }
   }
 
@@ -296,9 +376,11 @@ export class SshFs {
   }
 
   async readFile(remotePath: string, options?: { chunkSize?: number }): Promise<string> {
-    const chunkSize = options?.chunkSize ?? 64 * 1024
-    const fileSizeOutput = await this.runCmd(`stat -c %s "${remotePath}"`)
-    const fileSize = parseInt(fileSizeOutput.trim(), 10)
+    const defaultChunkSize = await this.detectChunkSize()
+    const chunkSize = options?.chunkSize ?? defaultChunkSize
+    const lsOutput = await this.runCmd(`ls -la "${remotePath}"`)
+    const parts = lsOutput.trim().split(/\s+/)
+    const fileSize = parts.length >= 5 ? parseInt(parts[4], 10) : 0
     
     if (fileSize <= chunkSize) {
       const output = await this.runCmd(`cat "${remotePath}"`)
@@ -307,10 +389,14 @@ export class SshFs {
     
     const chunks: string[] = []
     for (let offset = 0; offset < fileSize; offset += chunkSize) {
-      const cmd = `dd if="${remotePath}" bs=1K skip=${Math.floor(offset / 1024)} count=${Math.ceil(chunkSize / 1024)} 2>/dev/null`
-      const chunkOutput = await this.runCmd(cmd)
-      if (chunkOutput) {
-        chunks.push(chunkOutput)
+      try {
+        const cmd = `dd if="${remotePath}" bs=1K skip=${Math.floor(offset / 1024)} count=${Math.ceil(chunkSize / 1024)} 2>/dev/null`
+        const chunkOutput = await this.runCmd(cmd)
+        if (chunkOutput) {
+          chunks.push(chunkOutput)
+        }
+      } catch {
+        return this.runCmd(`cat "${remotePath}"`)
       }
     }
     
@@ -318,8 +404,9 @@ export class SshFs {
   }
 
   async writeFile(remotePath: string, str: string, mode?: number, _options?: { chunkSize?: number }): Promise<void> {
+    const defaultChunkSize = await this.detectChunkSize()
     const data = Buffer.from(str)
-    const sizeThreshold = 64 * 1024
+    const sizeThreshold = defaultChunkSize
     
     if (data.length <= sizeThreshold) {
       const escapedContent = str.replace(/'/g, "'\\''")
@@ -329,7 +416,7 @@ export class SshFs {
       const tempBase = `/tmp/ssh-fs-${Date.now()}`
       await this.runCmd(`mkdir -p "${tempBase}"`)
       try {
-        const chunkSize = 64 * 1024
+        const chunkSize = defaultChunkSize
         for (let i = 0; i < data.length; i += chunkSize) {
           const chunk = data.slice(i, i + chunkSize)
           const chunkFile = `${tempBase}/c${Math.floor(i / chunkSize)}`

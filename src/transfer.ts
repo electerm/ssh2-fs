@@ -16,11 +16,13 @@ export class Transfer {
   private chunkSize: number
   private state: TransferState
   private aborted = false
+  private sshFs: SshFs
 
   constructor(sshFs: SshFs, options: TransferOptions) {
+    this.sshFs = sshFs
     this.session = (sshFs as any).session
     this.options = options
-    this.chunkSize = options.chunkSize || 32768
+    this.chunkSize = options.chunkSize || 4096
     this.state = {
       transferred: 0,
       total: 0,
@@ -32,6 +34,10 @@ export class Transfer {
   async startTransfer(): Promise<void> {
     if (this.state.completed || this.state.error || this.aborted) {
       return
+    }
+
+    if (!this.options.chunkSize) {
+      this.chunkSize = await this.sshFs.getChunkSize()
     }
 
     const isDownload = this.options.type === 'download'
