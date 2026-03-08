@@ -8,7 +8,8 @@
     "build:cjs": "vite build --config build/vite.config.cjs.ts --outDir dist/cjs",
     "test": "node test/ssh2-fs.test.mjs && node test/transfer.test.mjs",
     "lint": "echo \"Lint not configured\" && exit 0",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "bench": "node benchmark/benchmark.js"
   },
   "homepage": "https://github.com/electerm/ssh2-scp#readme",
   "bugs": {
